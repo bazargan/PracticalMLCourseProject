@@ -1,0 +1,58 @@
+---
+title: "PracticalMachineLearning CourseProject"
+author: "Samad Bazargan"
+date: "June 5, 2016"
+output: html_document
+---
+
+The aim of this project to look at the quality of an action based on the data acquired in this paper: Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+Read more: <http://groupware.les.inf.puc-rio.br/har#weight_lifting_exercises#ixzz4AlWVnNNZ> 
+
+## Load the data
+csv files are already copied to the working directory so here we start:
+```{r}
+library(caret)
+warning=F
+training<-read.csv("pml-training.csv")
+testing<-read.csv("pml-testing.csv")
+```
+
+## Clean the data
+Looking at the training set provided for this project, a few observations can be made:
+- Few first columns are just time stamps and are not needed for this classification problem.
+- There are many columns with NA values.
+
+In order to reduce the number of unnecessary features, I first remove the columns with more than 80% NA, remove the features with near-zero variance, and then remove the few first columns before the sensor data. This data is then divided to training and validation sets:  
+```{r}
+nacolumns<-sapply(colnames(training), function(x) if( (sum(is.na(training[,x]))/nrow(training)) > 0.8) {return(T)} else {return(F)})
+training.naremoved <- training[,!nacolumns]
+nzvFeatures <- nearZeroVar(training.naremoved, saveMetrics = F)
+train.na.nzv.removed<-training.naremoved[,-nzvFeatures]
+training.trimmed<-subset(train.na.nzv.removed, select=-c(1:6))
+set.seed(12)
+inBuild<-createDataPartition(y=training.trimmed$classe, p=0.7, list=F)
+RFTrain<- training.trimmed[inBuild,]
+RFValidate<- training.trimmed[-inBuild,]
+```
+## Choose and build the model
+LDA is very fast compared to the random forest model but it does not result in a high prediction accuracy (Accuracy was around 0.7) therefore I continue to build my model based on the random forest. It is time-consuming to train but leads to a higher prediction accuracy and once built, outcome can be quickly predicted with the new data.
+
+To further reduce the number of unneccessary features, preProcess with "nzv" method is added to remove near-zero-variance columns. Cross Validation is also done with 3 folds to gain an estimate of out-of-sample error rate:
+
+```{r}
+set.seed(1233)
+RFmod <- train(classe~., method="rf", data = RFTrain,trControl = trainControl(method="cv", number = 3))
+RFmod
+```
+
+The out-of-sample error rate is also calculated as OOB below:
+
+```{r}
+RFmod$finalModel
+```
+## Evaluate on Validation and Test set data
+This model can also be further tested on the validation data and the test data:
+```{r}
+confusionMatrix(predict(RFmod, RFValidate), RFValidate$classe)
+predict(RFmod, testing)
+```
